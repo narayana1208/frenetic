@@ -22,6 +22,10 @@ Flag quickcheck
   Description: build the frenetic.quickcheck library
   Default: False
 
+Flag lwt
+  Description: build things that rely on lwt
+  Default: False
+
 Library netcore
   Path: lib
   BuildDepends:
@@ -49,11 +53,36 @@ Library netcore
     Semantics,
     LocalCompiler,
     NetKAT_Automaton,
-    Controller,
     PolicyGenerator
-
   Modules:
-    Util,
+    Util
+
+Library lwt
+  Findlibparent: netcore
+  Findlibname: lwt
+  Path: lib
+  Build$: flag(lwt)
+  BuildDepends:
+    cstruct,
+    dprle,
+    core,
+    sexplib,
+    sexplib.syntax,
+    lwt,
+    lwt.syntax,
+    lwt.syntax.log,
+    lwt.unix,
+    str,
+    ocamlgraph,
+    openflow,
+    openflow.lwt,
+    threads,
+    packet,
+    topology,
+    netcore
+  InternalModules:
+    Controller
+  Modules:
     NetKAT_Stream
 
 Library quickcheck
@@ -90,40 +119,23 @@ Executable katnetic
   CompiledObject: best
   MainIs: katnetic.ml
   Install$: flag(installexec)
+  Build$: flag(lwt)
   BuildDepends:
     lwt,
     lwt.syntax,
-    netcore
+    netcore,
+    netcore.lwt
 
 Executable netkat_test
   Path: frenetic
   MainIs: netkat_test.ml
   Install$: flag(installexec)
+  Build$: flag(lwt)
   BuildDepends:
     lwt,
     lwt.syntax,
-    netcore
-
-Document doc
-  Title: NetCore Documentation
-  Type: OCamlbuild (0.3)
-  XOCamlBuildPath: lib
-  XOCamlBuildModules:
-    NetCore_Compiler,
-    NetCore_Controller,
-    NetCore_ConsistentUpdates,
-    NetCore_Pretty,
-    NetCore_MacLearning,
-    NetCore_NAT,
-    NetCore_Semantics,
-    NetCore_Stream,
-    NetCore_StatefulFirewall,
-    NetCore_Topo,
-    NetCore_Types,
-    NetCore_Parsing,
-    NetKAT_Types,
-    NetKAT_Compiler,
-    Controller
+    netcore,
+    netcore.lwt
 
 Executable distfrenetic
   Path: frenetic
@@ -132,6 +144,20 @@ Executable distfrenetic
   Install: False
   BuildDepends:
     netcore,
+    core,
+    threads,
+    yojson,
+    async,
+    async_parallel,
+    cohttp,
+    cohttp.async
+
+Executable disttest
+  Path: frenetic
+  CompiledObject: best
+  MainIs: ParTest.ml
+  Install: False
+  BuildDepends:
     core,
     threads,
     yojson,

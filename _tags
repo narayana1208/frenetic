@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 3620166f08bdf96271d1614a11512092)
+# DO NOT EDIT (digest: 61cc26b0abf044f817f19f7355076252)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -15,6 +15,9 @@
 "_darcs": not_hygienic
 # Library netcore
 "lib/netcore.cmxs": use_netcore
+# Library lwt
+"lib/lwt.cmxs": use_lwt
+<lib/*.ml{,i}>: use_netcore
 <lib/*.ml{,i}>: package(core)
 <lib/*.ml{,i}>: package(threads)
 <lib/*.ml{,i}>: package(lwt)
@@ -97,6 +100,7 @@
 <test/*.ml{,i}>: package(openflow.lwt)
 <test/*.ml{,i}>: package(topology)
 # Executable katnetic
+<frenetic/katnetic.{native,byte}>: use_lwt
 <frenetic/katnetic.{native,byte}>: use_netcore
 <frenetic/katnetic.{native,byte}>: package(core)
 <frenetic/katnetic.{native,byte}>: package(threads)
@@ -115,6 +119,7 @@
 <frenetic/katnetic.{native,byte}>: package(openflow.lwt)
 <frenetic/katnetic.{native,byte}>: package(topology)
 # Executable netkat_test
+"frenetic/netkat_test.byte": use_lwt
 "frenetic/netkat_test.byte": use_netcore
 "frenetic/netkat_test.byte": package(core)
 "frenetic/netkat_test.byte": package(threads)
@@ -132,6 +137,7 @@
 "frenetic/netkat_test.byte": package(openflow)
 "frenetic/netkat_test.byte": package(openflow.lwt)
 "frenetic/netkat_test.byte": package(topology)
+<frenetic/*.ml{,i}>: use_lwt
 # Executable distfrenetic
 <frenetic/DistributedCompiler.{native,byte}>: use_netcore
 <frenetic/DistributedCompiler.{native,byte}>: package(core)
@@ -139,6 +145,8 @@
 <frenetic/DistributedCompiler.{native,byte}>: package(yojson)
 <frenetic/DistributedCompiler.{native,byte}>: package(async)
 <frenetic/DistributedCompiler.{native,byte}>: package(async_parallel)
+<frenetic/DistributedCompiler.{native,byte}>: package(cohttp)
+<frenetic/DistributedCompiler.{native,byte}>: package(cohttp.async)
 <frenetic/DistributedCompiler.{native,byte}>: package(lwt)
 <frenetic/DistributedCompiler.{native,byte}>: package(lwt.syntax)
 <frenetic/DistributedCompiler.{native,byte}>: package(packet)
@@ -154,11 +162,8 @@
 <frenetic/DistributedCompiler.{native,byte}>: package(openflow.lwt)
 <frenetic/DistributedCompiler.{native,byte}>: package(topology)
 <frenetic/*.ml{,i}>: use_netcore
-<frenetic/*.ml{,i}>: package(core)
-<frenetic/*.ml{,i}>: package(threads)
-<frenetic/*.ml{,i}>: package(yojson)
-<frenetic/*.ml{,i}>: package(async)
-<frenetic/*.ml{,i}>: package(async_parallel)
+<frenetic/*.ml{,i}>: package(cohttp)
+<frenetic/*.ml{,i}>: package(cohttp.async)
 <frenetic/*.ml{,i}>: package(lwt)
 <frenetic/*.ml{,i}>: package(lwt.syntax)
 <frenetic/*.ml{,i}>: package(packet)
@@ -173,6 +178,17 @@
 <frenetic/*.ml{,i}>: package(openflow)
 <frenetic/*.ml{,i}>: package(openflow.lwt)
 <frenetic/*.ml{,i}>: package(topology)
+# Executable disttest
+<frenetic/ParTest.{native,byte}>: package(core)
+<frenetic/ParTest.{native,byte}>: package(threads)
+<frenetic/ParTest.{native,byte}>: package(yojson)
+<frenetic/ParTest.{native,byte}>: package(async)
+<frenetic/ParTest.{native,byte}>: package(async_parallel)
+<frenetic/*.ml{,i}>: package(core)
+<frenetic/*.ml{,i}>: package(threads)
+<frenetic/*.ml{,i}>: package(yojson)
+<frenetic/*.ml{,i}>: package(async)
+<frenetic/*.ml{,i}>: package(async_parallel)
 # OASIS_STOP
 <lib/*.ml>: syntax_camlp4o
 <frenetic/*.ml>: syntax_camlp4o

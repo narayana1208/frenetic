@@ -148,18 +148,4 @@ Executable distfrenetic
     threads,
     yojson,
     async,
-    async_parallel,
-    cohttp,
-    cohttp.async
-
-Executable disttest
-  Path: frenetic
-  CompiledObject: best
-  MainIs: ParTest.ml
-  Install: False
-  BuildDepends:
-    core,
-    threads,
-    yojson,
-    async,
     async_parallel

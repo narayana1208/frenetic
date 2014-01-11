@@ -142,6 +142,9 @@ module type ACTION = sig
   val group_drop : group
   val group_is_id : group -> bool
   val group_is_drop : group -> bool
+  val to_netkat : t -> Types.policy
+  val set_to_netkat : Set.t -> Types.policy
+  val group_to_netkat : group -> Types.policy
 end
 
 module Action : ACTION = struct
@@ -338,7 +341,7 @@ module Pattern : PATTERN = struct
 end
 
 module type ATOM = sig
-  type t 
+  type t = Pattern.Set.t * Pattern.t
   module Set : Set.S with type Elt.t = t
   module Map : Map.S with type Key.t = t
   val to_string : t -> string
@@ -406,110 +409,6 @@ module type LOCAL = sig
   val of_pred : Types.pred -> t
   val of_policy : Types.policy -> t
 end 
-
-module Local : LOCAL = struct
-
-  type t = Action.group Atom.Map.t * Atom.Set.t
-
-  let to_string ((m,d):t) : string =
-    Printf.sprintf "%s\n%s"
-      (Atom.Map.fold m 
-         ~init:""
-         ~f:(fun ~key:r ~data:g acc ->
-             Printf.sprintf "%s(%s) => %s\n"
-               acc
-               (Atom.to_string r) 
-               (Action.group_to_string g)))
-      (Atom.Set.fold d
-         ~init:""
-         ~f:(fun acc r -> 
-               Printf.sprintf "%s%s%s"
-                 acc
-                 (Atom.to_string r)
-                 (Action.group_to_string Action.group_drop)))
-
-  let extend (r:Atom.t) (g:Action.group) ((m,d):t) : t =
-    if Action.group_is_drop g then (m,Atom.Set.add d r) 
-    else 
-      if Atom.Map.mem m r then
-        let msg = Printf.sprintf "Local.extend: overlap on atom %s" (Atom.to_string r) in 
-        failwith msg
-      else
-        (Atom.Map.add m r g, d)
-
-  let intersect (op:Action.group -> Action.group -> Action.group) (p:t) (q:t) : t = 
-    failwith "NYI"
-
-  let bin : t -> t -> t = 
-    failwith "NYI"
-      
-  let par : t -> t -> t = 
-    failwith "NYI"
-      
-  let choice : t -> t -> t = 
-    failwith "NYI"
-
-  let seq : t -> t -> t =
-    failwith "NYI"
-
-  let neg : t -> t = 
-    failwith "NYI"
-
-  let star : t -> t = 
-    failwith "NYI"
-
-  let rec of_pred (pr:Types.pred) : t =
-    let rec loop pr k = 
-      match pr with
-      | Types.True ->
-        let m = Atom.Map.singleton Atom.tru Action.group_id in 
-        let d = Atom.Set.empty in 
-        k (m,d)
-      | Types.False ->
-        let m = Atom.Map.empty in 
-        let d = Atom.Set.singleton Atom.tru in 
-        k (m,d)
-      | Types.Neg pr ->
-        loop pr (fun (p:t) -> k (neg p))
-      | Types.Test (Types.Switch, v) ->
-        failwith "Not a local policy"
-      | Types.Test (Types.Header f, v) ->
-        let x = Pattern.mk f v in  
-        let r = Atom.mk x in 
-        let m = Atom.Map.singleton r Action.group_id in 
-        let d = Atom.neg r in 
-        k (m,d) 
-      | Types.And (pr1, pr2) ->
-        loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (seq p1 p2)))
-      | Types.Or (pr1, pr2) ->
-        loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (par p1 p2))) in 
-    loop pr (fun x -> x)
-
-  let of_policy (pol:Types.policy) : t =
-    let rec loop pol k =  
-      match pol with
-        | Types.Filter pr ->
-          k (of_pred pr)
-        | Types.Mod (Types.Switch, v) ->
-          failwith "Not a local policy"
-        | Types.Mod (Types.Header f, v) -> 
-          let a = Action.mk f v in 
-          let g = Action.group_mk (Action.Set.singleton a) in 
-          let m = Atom.Map.singleton Atom.tru g in 
-          let d = Atom.Set.empty in 
-          k (m,d)
-        | Types.Par (pol1, pol2) ->
-          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (par p1 p2)))
-        | Types.Choice (pol1, pol2) ->
-          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (choice p1 p2)))
-        | Types.Seq (pol1, pol2) ->
-          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (seq p1 p2)))
-        | Types.Star pol ->
-          loop pol (fun p -> k (star p))
-        | Types.Link(sw,pt,sw',pt') ->
-	  failwith "Not a local policy" in 
-    loop pol (fun p -> p)
-end
 
 module type OPTIMIZE = sig
   open Types 
@@ -639,6 +538,124 @@ module Optimize : OPTIMIZE = struct
         | Types.Link(sw,pt,sw',pt') ->
 	  failwith "Not a local policy" in 
     loop pol (fun x -> x) 
+end
+
+module Local : LOCAL = struct
+
+  type t = Action.group Atom.Map.t * Atom.Set.t
+
+  let to_string ((m,d):t) : string =
+    Printf.sprintf "%s\n%s"
+      (Atom.Map.fold m 
+         ~init:""
+         ~f:(fun ~key:r ~data:g acc ->
+             Printf.sprintf "%s(%s) => %s\n"
+               acc
+               (Atom.to_string r) 
+               (Action.group_to_string g)))
+      (Atom.Set.fold d
+         ~init:""
+         ~f:(fun acc r -> 
+               Printf.sprintf "%s%s%s"
+                 acc
+                 (Atom.to_string r)
+                 (Action.group_to_string Action.group_drop)))
+
+  let extend (r:Atom.t) (g:Action.group) ((m,d):t) : t =
+    if Action.group_is_drop g then (m,Atom.Set.add d r) 
+    else 
+      if Atom.Map.mem m r then
+        let msg = Printf.sprintf "Local.extend: overlap on atom %s" (Atom.to_string r) in 
+        failwith msg
+      else
+        (Atom.Map.add m r g, d)
+
+  let intersect (op:Action.group -> Action.group -> Action.group) (p:t) (q:t) : t = 
+    failwith "NYI"
+
+  let bin : t -> t -> t = 
+    failwith "NYI"
+      
+  let par : t -> t -> t = 
+    failwith "NYI"
+      
+  let choice : t -> t -> t = 
+    failwith "NYI"
+
+  let seq : t -> t -> t =
+    failwith "NYI"
+
+  let neg : t -> t = 
+    failwith "NYI"
+
+  let star : t -> t = 
+    failwith "NYI"
+
+  let rec of_pred (pr:Types.pred) : t =
+    let rec loop pr k = 
+      match pr with
+      | Types.True ->
+        let m = Atom.Map.singleton Atom.tru Action.group_id in 
+        let d = Atom.Set.empty in 
+        k (m,d)
+      | Types.False ->
+        let m = Atom.Map.empty in 
+        let d = Atom.Set.singleton Atom.tru in 
+        k (m,d)
+      | Types.Neg pr ->
+        loop pr (fun (p:t) -> k (neg p))
+      | Types.Test (Types.Switch, v) ->
+        failwith "Not a local policy"
+      | Types.Test (Types.Header f, v) ->
+        let x = Pattern.mk f v in  
+        let r = Atom.mk x in 
+        let m = Atom.Map.singleton r Action.group_id in 
+        let d = Atom.neg r in 
+        k (m,d) 
+      | Types.And (pr1, pr2) ->
+        loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (seq p1 p2)))
+      | Types.Or (pr1, pr2) ->
+        loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (par p1 p2))) in 
+    loop pr (fun x -> x)
+
+  let of_policy (pol:Types.policy) : t =
+    let rec loop pol k =  
+      match pol with
+        | Types.Filter pr ->
+          k (of_pred pr)
+        | Types.Mod (Types.Switch, v) ->
+          failwith "Not a local policy"
+        | Types.Mod (Types.Header f, v) -> 
+          let a = Action.mk f v in 
+          let g = Action.group_mk (Action.Set.singleton a) in 
+          let m = Atom.Map.singleton Atom.tru g in 
+          let d = Atom.Set.empty in 
+          k (m,d)
+        | Types.Par (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (par p1 p2)))
+        | Types.Choice (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (choice p1 p2)))
+        | Types.Seq (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (seq p1 p2)))
+        | Types.Star pol ->
+          loop pol (fun p -> k (star p))
+        | Types.Link(sw,pt,sw',pt') ->
+	  failwith "Not a local policy" in 
+    loop pol (fun p -> p)
+
+  let to_netkat ((m,d):t) : Types.policy =
+    let open Optimize in 
+    let rec loop m =
+    match Atom.Map.min_elt m with 
+      | None -> 
+        Types.Filter Types.False
+      | Some (r,g) -> 
+        let m' = Atom.Map.remove m r in
+        let (xs,x) = r in
+        let nc_pred = mk_and (mk_not (Pattern.set_to_netkat xs)) (Pattern.to_netkat x) in
+        let nc_pred_acts = mk_seq (Types.Filter nc_pred) (Action.group_to_netkat g) in
+        mk_par nc_pred_acts  (loop m') in
+    loop m
 end
 
 (* exports *)

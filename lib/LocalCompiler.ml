@@ -287,6 +287,7 @@ module type ATOM = sig
   module Map : Map.S with type Key.t = t
   val to_string : t -> string
   val compare : t -> t -> int 
+  val mk : Pattern.t -> t
   val tru : t
 end
 
@@ -316,9 +317,157 @@ module Atom : ATOM = struct
       (Pattern.set_to_string xs)
       (Pattern.to_string x)
 
-  let tru : t = 
-    (Pattern.Set.empty, Pattern.tru)
+  let mk (x:Pattern.t) : t =
+    (Pattern.Set.empty, x)
 
+  let tru : t = 
+    mk Pattern.tru
+
+  let check ((xs,x):t) : t option =
+    Some (xs,x)
+    
+  let seq_atom ((xs1,x1):t) ((xs2,x2):t) : t option =
+    match Pattern.seq x1 x2 with
+      | Some x12 ->
+        check (Pattern.Set.union xs1 xs2, x12)
+      | None ->
+        None
+end
+
+module type OPTIMIZE = sig
+  open Types 
+  val mk_and : pred -> pred -> pred
+  val mk_or : pred -> pred -> pred
+  val mk_not : pred -> pred
+  val mk_filter : pred -> policy
+  val mk_mod : field -> fieldVal -> policy
+  val mk_seq : policy -> policy -> policy
+  val mk_par : policy -> policy -> policy
+  val mk_star : policy -> policy
+  val specialize_pred : fieldVal -> pred -> pred
+  val specialize_policy : fieldVal -> policy -> policy
+end
+
+module Optimize : OPTIMIZE = struct
+  let mk_and pr1 pr2 = 
+    match pr1, pr2 with 
+      | Types.True, _ -> 
+        pr2
+      | _, Types.True -> 
+        pr1
+      | Types.False, _ -> 
+        Types.False
+      | _, Types.False -> 
+        Types.False
+      | _ -> 
+        Types.And(pr1, pr2)
+
+  let mk_or pr1 pr2 = 
+    match pr1, pr2 with 
+      | Types.True, _ -> 
+        Types.True
+      | _, Types.True -> 
+        Types.True
+      | Types.False, _ -> 
+        pr2
+      | _, Types.False -> 
+        pr2
+      | _ -> 
+        Types.Or(pr1, pr2)
+
+  let mk_not pat =
+    match pat with
+      | Types.False -> Types.True
+      | Types.True -> Types.False
+      | _ -> Types.Neg(pat) 
+
+  let mk_mod f v = 
+    Types.Mod (Types.Header f,v)
+
+  let mk_filter pr = 
+    Types.Filter (pr)
+
+  let mk_par pol1 pol2 = 
+    match pol1, pol2 with
+      | Types.Filter Types.False, _ -> 
+        pol2
+      | _, Types.Filter Types.False -> 
+        pol1
+      | _ -> 
+        Types.Par(pol1,pol2) 
+
+  let mk_seq pol1 pol2 =
+    match pol1, pol2 with
+      | Types.Filter Types.True, _ -> 
+        pol2
+      | _, Types.Filter Types.True -> 
+        pol1
+      | Types.Filter Types.False, _ -> 
+        pol1
+      | _, Types.Filter Types.False -> 
+        pol2
+      | _ -> 
+        Types.Seq(pol1,pol2) 
+
+  let mk_choice pol1 pol2 =
+    match pol1, pol2 with
+      | _ -> Types.Choice(pol1,pol2) 
+
+  let mk_star pol = 
+    match pol with 
+      | Types.Filter Types.True -> 
+        pol
+      | Types.Filter Types.False -> 
+        Types.Filter Types.True
+      | Types.Star(pol1) -> pol
+      | _ -> Types.Star(pol)
+  
+  let specialize_pred sw pr = 
+    let rec loop pr k = 
+      match pr with
+        | Types.True ->
+          k pr
+        | Types.False ->
+          k pr
+        | Types.Neg pr1 ->
+          loop pr1 (fun pr -> k (mk_not pr))
+        | Types.Test (Types.Switch, v) ->
+          if v = sw then 
+            k Types.True
+          else
+            k Types.False
+        | Types.Test (h, v) ->
+          k pr
+        | Types.And (pr1, pr2) ->
+          loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (mk_and p1 p2)))
+        | Types.Or (pr1, pr2) ->
+          loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (mk_or p1 p2))) in 
+    loop pr (fun x -> x)
+
+  let specialize_policy sw pol = 
+    let rec loop pol k = 
+      match pol with  
+        | Types.Filter pr ->
+          k (Types.Filter (specialize_pred sw pr))
+        | Types.Mod (h, v) ->
+          k pol 
+        | Types.Par (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (mk_par p1 p2)))
+        | Types.Choice (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (mk_choice p1 p2)))
+        | Types.Seq (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (mk_seq p1 p2)))
+        | Types.Star pol ->
+          loop pol (fun p -> k (mk_star p))
+        | Types.Link(sw,pt,sw',pt') ->
+	  failwith "Not a local policy" in 
+    loop pol (fun x -> x) 
+end
+
+module type LOCAL = sig
+end 
+
+module Local : LOCAL = struct
 end
 
 (* exports *)

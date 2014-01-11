@@ -184,7 +184,7 @@ module Action : ACTION = struct
     let ss = 
       List.fold g2
         ~init:SetSet.empty
-        ~f:(fun acc s -> SetSet.add acc s) in 
+        ~f:SetSet.add in 
     let rec loop g ss k = 
       match g with 
         | [] -> k g2
@@ -289,6 +289,7 @@ module type ATOM = sig
   val compare : t -> t -> int 
   val mk : Pattern.t -> t
   val tru : t
+  val neg : t -> Set.t
 end
 
 module Atom : ATOM = struct
@@ -326,12 +327,21 @@ module Atom : ATOM = struct
   let check ((xs,x):t) : t option =
     Some (xs,x)
     
-  let seq_atom ((xs1,x1):t) ((xs2,x2):t) : t option =
+  let seq ((xs1,x1):t) ((xs2,x2):t) : t option =
     match Pattern.seq x1 x2 with
       | Some x12 ->
         check (Pattern.Set.union xs1 xs2, x12)
       | None ->
         None
+
+  let neg (xs,x) : Set.t = 
+    let init = 
+      match check (Pattern.Set.singleton x, Pattern.tru) with 
+        | None -> Set.empty
+        | Some r -> Set.singleton r in 
+    Pattern.Set.fold xs
+      ~init:init
+      ~f:(fun acc xi -> Set.add acc (mk xi))
 end
 
 module type OPTIMIZE = sig
@@ -470,11 +480,12 @@ module type LOCAL = sig
 end 
 
 module Local : LOCAL = struct
+
   type t = Action.group Atom.Map.t * Atom.Set.t
 
-  let to_string ((p,d):t) : string =
+  let to_string ((m,d):t) : string =
     Printf.sprintf "%s\n%s"
-      (Atom.Map.fold p 
+      (Atom.Map.fold m 
          ~init:""
          ~f:(fun ~key:r ~data:g acc ->
              Printf.sprintf "%s(%s) => %s\n"
@@ -488,6 +499,88 @@ module Local : LOCAL = struct
                  acc
                  (Atom.to_string r)
                  (Action.group_to_string Action.group_drop)))
+
+  let extend (r:Atom.t) (g:Action.group) ((m,d):t) : t =
+    if Action.group_is_drop g then (m,Atom.Set.add d r) 
+    else 
+      if Atom.Map.mem m r then
+        let msg = Printf.sprintf "Local.extend: overlap on atom %s" (Atom.to_string r) in 
+        failwith msg
+      else
+        (Atom.Map.add m r g, d)
+
+  let intersect (op:Action.group -> Action.group -> Action.group) (p:t) (q:t) : t = 
+    failwith "NYI"
+
+  let bin : t -> t -> t = 
+    failwith "NYI"
+      
+  let par : t -> t -> t = 
+    failwith "NYI"
+      
+  let choice : t -> t -> t = 
+    failwith "NYI"
+
+  let seq : t -> t -> t =
+    failwith "NYI"
+
+  let neg : t -> t = 
+    failwith "NYI"
+
+  let star : t -> t = 
+    failwith "NYI"
+
+  let rec of_pred (sw:fieldVal) (pr:Types.pred) : t =
+    let rec loop pr k = 
+      match pr with
+      | Types.True ->
+        let m = Atom.Map.singleton Atom.tru Action.group_id in 
+        let d = Atom.Set.empty in 
+        k (m,d)
+      | Types.False ->
+        let m = Atom.Map.empty in 
+        let d = Atom.Set.singleton Atom.tru in 
+        k (m,d)
+      | Types.Neg pr ->
+        loop pr (fun (p:t) -> k (neg p))
+      | Types.Test (Types.Switch, v) ->
+        failwith "Not a local policy"
+      | Types.Test (Types.Header f, v) ->
+        let x = Pattern.mk f v in  
+        let r = Atom.mk x in 
+        let m = Atom.Map.singleton r Action.group_id in 
+        let d = Atom.neg r in 
+        k (m,d) 
+      | Types.And (pr1, pr2) ->
+        loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (seq p1 p2)))
+      | Types.Or (pr1, pr2) ->
+        loop pr1 (fun p1 -> loop pr2 (fun p2 -> k (par p1 p2))) in 
+    loop pr (fun x -> x)
+
+  let of_policy (sw:fieldVal) (pol:Types.policy) : t =
+    let rec loop pol k =  
+      match pol with
+        | Types.Filter pr ->
+          k (of_pred sw pr)
+        | Types.Mod (Types.Switch, v) ->
+          failwith "Not a local policy"
+        | Types.Mod (Types.Header f, v) -> 
+          let a = Action.mk f v in 
+          let g = Action.group_mk (Action.Set.singleton a) in 
+          let m = Atom.Map.singleton Atom.tru g in 
+          let d = Atom.Set.empty in 
+          k (m,d)
+        | Types.Par (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (par p1 p2)))
+        | Types.Choice (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (choice p1 p2)))
+        | Types.Seq (pol1, pol2) ->
+          loop pol1 (fun p1 -> loop pol2 (fun p2 -> k (seq p1 p2)))
+        | Types.Star pol ->
+          loop pol (fun p -> k (star p))
+        | Types.Link(sw,pt,sw',pt') ->
+	  failwith "Not a local policy" in 
+    loop pol (fun p -> p)
 end
 
 (* exports *)

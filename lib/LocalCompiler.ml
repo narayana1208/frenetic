@@ -3,7 +3,7 @@ open Sexplib.Conv
 
 open SDN_Types
 
-module type FIELDMAP = sig
+module type FIELDS = sig
   type t = (field * fieldVal) list
   module Set : Set.S with type Elt.t = t
   val to_string : ?init:string -> ?sep:string -> t -> string
@@ -17,7 +17,7 @@ module type FIELDMAP = sig
   val subseteq : t -> t -> bool
 end
 
-module FieldMap : FIELDMAP = struct
+module Fields : FIELDS = struct
 
   type t = (field * fieldVal) list sexp_opaque with sexp
         
@@ -122,7 +122,7 @@ module FieldMap : FIELDMAP = struct
 end
 
 module type ACTION = sig
-  type t = FieldMap.t
+  type t = Fields.t
   module Set : Set.S with type Elt.t = t
   type group = Set.t list
   val to_string : t -> string
@@ -149,19 +149,19 @@ end
 
 module Action : ACTION = struct
 
-  type t = FieldMap.t
+  type t = Fields.t
 
-  module SetSet = Set.Make(FieldMap.Set)
+  module SetSet = Set.Make(Fields.Set)
 
-  module Set = FieldMap.Set
+  module Set = Fields.Set
 
   type group = Set.t list
 
   let to_string : t -> string = 
-    FieldMap.to_string ~init:"" ~sep:":="
+    Fields.to_string ~init:"" ~sep:":="
 
   let set_to_string : Set.t -> string = 
-    FieldMap.set_to_string ~init:"" ~sep:":="
+    Fields.set_to_string ~init:"" ~sep:":="
 
   let group_to_string (g:group) : string = 
     List.fold g
@@ -172,13 +172,13 @@ module Action : ACTION = struct
              (set_to_string s))
 
   let mk (f:field) (v:VInt.t) : t = 
-    FieldMap.mk f v
+    Fields.mk f v
 
   let seq : t -> t -> t option = 
-    FieldMap.seq
+    Fields.seq
 
   let diff : t -> t -> t = 
-    FieldMap.diff
+    Fields.diff
 
   let group_mk (s:Set.t) : group = 
     [s]
@@ -208,7 +208,7 @@ module Action : ACTION = struct
                          else (s1is2j::g, SetSet.add ss s1is2j))))
 
   let id : Set.t = 
-    Set.singleton (FieldMap.empty)
+    Set.singleton (Fields.empty)
 
   let drop : Set.t = 
     Set.empty
@@ -217,7 +217,7 @@ module Action : ACTION = struct
     Set.length s = 1 && 
     match Set.min_elt s with 
       | None -> false
-      | Some a -> FieldMap.is_empty a
+      | Some a -> Fields.is_empty a
 
   let is_drop (s:Set.t) : bool = 
     Set.is_empty s
@@ -275,7 +275,7 @@ module Action : ACTION = struct
 end
 
 module type PATTERN = sig
-  type t = FieldMap.t
+  type t = Fields.t
   module Set : Set.S with type Elt.t = t
   val to_string : t -> string
   val set_to_string : Set.t -> string
@@ -291,33 +291,33 @@ end
 
 module Pattern : PATTERN = struct
 
-  type t = FieldMap.t
+  type t = Fields.t
 
-  module Set = FieldMap.Set
+  module Set = Fields.Set
 
   let to_string : t -> string = 
-    FieldMap.to_string ~init:"" ~sep:":="
+    Fields.to_string ~init:"" ~sep:":="
 
   let set_to_string : Set.t -> string = 
-    FieldMap.set_to_string ~init:"" ~sep:":="
+    Fields.set_to_string ~init:"" ~sep:":="
 
   let compare : t -> t -> int = 
-    FieldMap.compare
+    Fields.compare
 
   let mk (f:field) (v:VInt.t) = 
-    FieldMap.mk f v
+    Fields.mk f v
 
   let seq : t -> t -> t option = 
-    FieldMap.seq
+    Fields.seq
       
   let diff : t -> t -> t = 
-    FieldMap.diff
+    Fields.diff
 
   let subseteq : t -> t -> bool = 
-    FieldMap.subseteq
+    Fields.subseteq
       
   let tru : t = 
-    FieldMap.empty
+    Fields.empty
 
   let to_netkat (x:t) : Types.pred =
     let rec loop x k = 

@@ -124,7 +124,7 @@ end
 module type ACTION = sig
   type t = FieldMap.t
   module Set : Set.S with type Elt.t = t
-  type group 
+  type group = Set.t list
   val to_string : t -> string
   val set_to_string : Set.t -> string
   val group_to_string : group -> string
@@ -403,13 +403,6 @@ module Atom : ATOM = struct
       ~f:(fun acc xi -> Set.add acc (mk xi))
 end
 
-module type LOCAL = sig
-  type t 
-  val to_string : t -> string
-  val of_pred : Types.pred -> t
-  val of_policy : Types.policy -> t
-end 
-
 module type OPTIMIZE = sig
   open Types 
   val mk_and : pred -> pred -> pred
@@ -540,6 +533,14 @@ module Optimize : OPTIMIZE = struct
     loop pol (fun x -> x) 
 end
 
+module type LOCAL = sig
+  type t = Action.group Atom.Map.t * Atom.Set.t
+  val to_string : t -> string
+  val of_pred : Types.pred -> t
+  val of_policy : Types.policy -> t
+  val to_netkat : t -> Types.policy
+end 
+
 module Local : LOCAL = struct
 
   type t = Action.group Atom.Map.t * Atom.Set.t
@@ -658,10 +659,102 @@ module Local : LOCAL = struct
     loop m
 end
 
+module RunTime = struct
+
+  let to_action (a:Action.t) (pto: fieldVal option) : seq =
+    let port = 
+      match pto, List.Assoc.find a InPort with 
+        | None, None -> 
+          failwith "indeterminate port"
+        | Some pt,_ -> pt
+        | _, Some pt -> pt in 
+    let mods = List.Assoc.remove a InPort in 
+    let mk_mod act (f, v) = SetField(f,v)::act in 
+    List.fold mods ~init:[OutputPort port] ~f:mk_mod
+
+  let set_to_action (s:Action.Set.t) (pto : fieldVal option) : par =
+    let f par a = (to_action a pto)::par in
+    Action.Set.fold s ~f:f ~init:[]
+
+  let group_to_action (g:Action.group) (pto:fieldVal option) : group =
+    List.map g ~f:(fun s -> set_to_action s pto)
+
+  let to_pattern (x:Pattern.t) : pattern =
+    List.fold x 
+      ~init:SDN_Types.FieldMap.empty
+      ~f:(fun acc (f,v) -> SDN_Types.FieldMap.add f v acc)
+      
+  type i = Local.t
+
+  let compile (sw:fieldVal) (pol:Types.policy) : i =
+    let pol' = Optimize.specialize_policy sw pol in 
+    let n,n' = Semantics.size pol, Semantics.size pol' in 
+    Printf.printf "Compression: %d -> %d = %.3f" 
+      n n' (Float.of_int n' /. Float.of_int n);
+    Local.of_policy pol'
+
+  let decompile (p:i) : Types.policy =
+    Local.to_netkat p
+
+  let simpl_flow (p : pattern) (a : group) : flow =
+    { pattern = p;
+      action = a;
+      cookie = 0L;
+      idle_timeout = Permanent;
+      hard_timeout = Permanent }
+
+  (* Prunes out rules that apply to other switches. *)
+  let to_table ((m,d):i) : flowTable =
+    let add_flow x g l =
+      let pto = List.Assoc.find x InPort in 
+      simpl_flow (to_pattern x) (group_to_action g pto) :: l in
+    let rec loop m acc cover =
+      match Atom.Map.min_elt m with 
+        | None -> 
+          acc 
+        | Some (r,g) -> 
+          let (xs,x) = r in
+          let m' = Atom.Map.remove m r in
+          let ys = 
+            Pattern.Set.fold
+              xs ~init:Pattern.Set.empty
+              ~f:(fun acc xi -> 
+                match Pattern.seq xi x with 
+                  | None -> acc
+                  | Some xi_x -> Pattern.Set.add acc xi_x) in 
+          let zs = 
+            Pattern.Set.fold ys 
+              ~init:Pattern.Set.empty
+              ~f:(fun acc yi -> 
+                if Pattern.Set.exists cover ~f:(Pattern.subseteq yi) then 
+                  acc
+                else
+                  Pattern.Set.add acc yi) in 
+          let acc' = 
+            Pattern.Set.fold zs 
+              ~init:acc 
+              ~f:(fun acc x -> add_flow x Action.group_drop acc) in
+          let acc'' = add_flow x g acc' in
+          let cover' = Pattern.Set.add (Pattern.Set.union zs cover) x in
+          loop m' acc'' cover' in
+    List.rev (loop m [] Pattern.Set.empty)
+end
+
 (* exports *)
-type t = unit
-let of_policy = failwith "NYI"
-let to_netkat = failwith "NYI" 
-let compile = failwith "NYI" 
-let decompile = failwith "NYI" 
-let to_table = failwith "NYI"
+type t = RunTime.i
+
+let of_policy sw pol = 
+  Local.of_policy (Optimize.specialize_policy sw pol)
+
+let to_netkat = 
+  Local.to_netkat
+
+let compile = 
+  RunTime.compile
+
+let decompile = 
+  RunTime.decompile
+
+let to_table = 
+  RunTime.to_table
+

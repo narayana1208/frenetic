@@ -129,7 +129,8 @@ module type ACTION = sig
   val set_to_string : Set.t -> string
   val group_to_string : group -> string
   val mk : field -> fieldVal -> t
-  val seq : t -> t -> t
+  val seq : t -> t -> t option
+  val diff : t -> t -> t
   val group_mk : Set.t -> group
   val group_union : group -> group -> group
   val group_cross : group -> group -> group
@@ -143,7 +144,7 @@ module type ACTION = sig
   val group_is_drop : group -> bool
 end
 
-module Action = struct
+module Action : ACTION = struct
 
   type t = FieldMap.t
 
@@ -169,6 +170,12 @@ module Action = struct
 
   let mk (f:field) (v:VInt.t) : t = 
     FieldMap.mk f v
+
+  let seq : t -> t -> t option = 
+    FieldMap.seq
+
+  let diff : t -> t -> t = 
+    FieldMap.diff
 
   let group_mk (s:Set.t) : group = 
     [s]
@@ -233,17 +240,17 @@ end
 module type PATTERN = sig
   type t = FieldMap.t
   module Set : Set.S with type Elt.t = t
-  type group 
   val to_string : t -> string
   val set_to_string : Set.t -> string
-  val group_to_string : group -> string
+  val compare : t -> t -> int
   val mk : field -> fieldVal -> t
-  val seq : t -> t -> t
+  val seq : t -> t -> t option
   val diff : t -> t -> t
-  val subseteq : t -> t -> t
+  val subseteq : t -> t -> bool
+  val tru : t
 end
 
-module Pattern = struct
+module Pattern : PATTERN = struct
 
   type t = FieldMap.t
 
@@ -254,6 +261,9 @@ module Pattern = struct
 
   let set_to_string : Set.t -> string = 
     FieldMap.set_to_string ~init:"" ~sep:":="
+
+  let compare : t -> t -> int = 
+    FieldMap.compare
 
   let mk (f:field) (v:VInt.t) = 
     FieldMap.mk f v
@@ -266,8 +276,50 @@ module Pattern = struct
 
   let subseteq : t -> t -> bool = 
     FieldMap.subseteq
+      
+  let tru : t = 
+    FieldMap.empty
 end
 
+module type ATOM = sig
+  type t 
+  module Set : Set.S with type Elt.t = t
+  module Map : Map.S with type Key.t = t
+  val to_string : t -> string
+  val compare : t -> t -> int 
+  val tru : t
+end
+
+module Atom : ATOM = struct
+
+  type t = (Pattern.Set.t * Pattern.t) sexp_opaque with sexp
+
+  let compare ((xs1,x1):t) ((xs2,x2):t) : int = 
+    let cmp = Pattern.Set.compare xs1 xs2 in 
+    if cmp <> 0 then cmp
+    else Pattern.compare x1 x2  
+
+  type this_t = t with sexp
+
+  module Set = Set.Make(struct
+    type t = this_t with sexp
+    let compare = compare
+  end)
+
+  module Map = Map.Make(struct
+    type t = this_t with sexp
+    let compare = compare
+  end)
+
+  let to_string ((xs,x):t) : string = 
+    Printf.sprintf "{%s},%s"
+      (Pattern.set_to_string xs)
+      (Pattern.to_string x)
+
+  let tru : t = 
+    (Pattern.Set.empty, Pattern.tru)
+
+end
 
 (* exports *)
 type t = unit

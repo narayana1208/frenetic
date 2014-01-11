@@ -465,9 +465,29 @@ module Optimize : OPTIMIZE = struct
 end
 
 module type LOCAL = sig
+  type t 
+  val to_string : t -> string
 end 
 
 module Local : LOCAL = struct
+  type t = Action.group Atom.Map.t * Atom.Set.t
+
+  let to_string ((p,d):t) : string =
+    Printf.sprintf "%s\n%s"
+      (Atom.Map.fold p 
+         ~init:""
+         ~f:(fun ~key:r ~data:g acc ->
+             Printf.sprintf "%s(%s) => %s\n"
+               acc
+               (Atom.to_string r) 
+               (Action.group_to_string g)))
+      (Atom.Set.fold d
+         ~init:""
+         ~f:(fun acc r -> 
+               Printf.sprintf "%s%s%s"
+                 acc
+                 (Atom.to_string r)
+                 (Action.group_to_string Action.group_drop)))
 end
 
 (* exports *)

@@ -706,8 +706,9 @@ module RunTime = struct
   (* Prunes out rules that apply to other switches. *)
   let to_table ((m,d):i) : flowTable =
     let add_flow x g l =
-      let pto = List.Assoc.find x InPort in 
-      simpl_flow (to_pattern x) (group_to_action g pto) :: l in
+      let pat = to_pattern x in 
+      let act = group_to_action g (List.Assoc.find x InPort) in 
+      simpl_flow pat act::l in
     let rec loop m acc cover =
       match Atom.Map.min_elt m with 
         | None -> 
